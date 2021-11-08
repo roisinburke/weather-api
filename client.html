@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<style>
+    table, th, td {
+  border: 1px solid black;
+  border-collapse: collapse;
+}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/vue@2/dist/vue.js"></script>
+
+<body>
+    <div id="app">
+        <h1>Róisín's Weather Report</h1>
+        <div class="search-container">
+            Search loaction:
+            <br>
+            <input type="text" placeholder="City" name="city-search" v-model="city">
+            <button class="confirm-search" v-on:click="getWeather()">Go!</button>
+        </div>
+        {{city}}
+        <div class="results">
+            <h4 id="forcast"></h4>
+            <table id="weather"> 
+            </table>
+            <h4 id="travel-guide"></h4>
+            <ul id="umbrella"></ul>
+            <ul id="clothes"></ul>
+            <ul v-if="airPollution" id="mask">Don't forget, bring a mask!</ul>
+        </div>
+    </div>
+</body>
+<script>
+    var app = new Vue({
+        el: '#app',
+        data: {
+            city: "",
+            lat: "",
+            lon: "",
+            numOfDays: 6,
+            airPollution: false,
+            results: null
+        },
+        methods :{
+            getWeather: function() {
+                fetch(`http://localhost:3000/getWeather/${this.city}`)
+            .then((response) => response.json())
+            .then((data) => {
+                this.results = getDetails(data);
+                genterateTable(this.results);
+                this.airPollution = false;
+            fetch("http://localhost:3000/getAirPol/"+this.lat+"/"+this.lon)
+            .then(response => response.json())
+            .then(data => {
+              for(item of data.list){
+                if(item.components.pm2_5 > 10){
+                  this.airPollution = true;
+                  break;
+                }
+              }
+            })
+                travelGuide(this.results);
+            })
+            }
+        }
+    })
+
+    function genterateTable(result) {
+        document.getElementById('forcast').textContent = "Weather for the next five days in "+app.city;
+        var table = document.getElementById("weather");
+        table.innerHTML = ""
+        var th = "<tr>";
+        th += "<th>" + '' + "</th>" + "<th>" + 'Max Temperature (°C)' + "</th>" + "<th>" + 'Max Wind Speed (m/s)' + "</th>" + "<th>" + 'Total Rainfall (mm)' + "</th>";
+        table.innerHTML += th;
+        for (var i in result) {
+        var tr = "<tr>";
+        tr += "<td>" + i + "</td>" + "<td>" + result[i].temp + "</td>" + "<td>" + result[i].wind + "</td>" + "<td>" + result[i].rainfall + "</td></tr>";
+        table.innerHTML += tr;
+      }
+    }
+
+    function needUmbrella(results) {
+        var answer = "Lucky you, no need for an umbrella!"
+        let temp = 0.0;
+        for (var i in results) {
+        if (results[i]['raining']){
+            answer = "Uh oh, it would be avised to bring an umbrella!";
+        }
+        temp += parseFloat(results[i]['temp']);
+      }
+        return answer;
+    }
+
+    function hotOrCold(results) {    
+        let temp = 0.0;
+        let length = app.numOfDays;
+
+        for (var i in results) {
+        temp += parseFloat(results[i]['temp']);
+      }
+      temp = temp / length;
+
+      let answer = 'Pack for ';
+        if (temp >= -10 && temp <= 10) {
+          answer = answer+'cold weather!';
+        } else if (temp > 10 && temp <= 20) {
+          answer = answer+'warm weather!';
+        } else if (temp > 20) {
+          answer = answer+'hot weather!';
+        }
+        return answer;
+    }
+
+    function getDetails(data) {
+      let results = {};
+      for (var i in data['list']) {
+        let date = data['list'][i]['dt_txt'].substring(0,10);
+        if (!results[date]) {
+          results[date] = [];
+        }
+      }
+      //coordinates
+      app.lat = data['city']['coord']['lat'];
+      app.lon = data['city']['coord']['lon'];
+
+        
+      for (var d in results) {
+        let dataResults = getKeys(data, d);
+        results[d]['rainfall'] = dataResults.pop();
+        results[d]['wind'] = dataResults.pop();
+        results[d]['temp'] = dataResults.pop();
+        results[d]['raining'] = dataResults.pop();
+      }
+      return results;
+    }
+
+    function getKeys(data, date) {
+      let temp = 0;
+      let raining = false;
+      let windSpeed = 0;
+      let rainfall = 0;
+      let results = [];
+      for (var i in data['list']) {
+        if (data['list'][i]['dt_txt'].substring(0,10) === date) {
+          let temperature = data['list'][i]['main']['temp'];
+          if (temperature > temp) {
+            temp = temperature;
+          }
+          let wind = data['list'][i]['wind']['speed'];
+          if (wind > windSpeed) {
+            windSpeed = wind;
+          } 
+          if (data['list'][i]['rain']) {
+            raining = true;
+            if (data['list'][i]['rain']['3h']) {
+              let rain = data['list'][i]['rain']['3h'];
+              rainfall = rainfall + rain;
+            }
+          }
+        }
+      }
+      temp = parseFloat(temp)
+      results.push(raining);
+      results.push((temp - 273.15).toFixed(2));
+      results.push(windSpeed);
+      results.push(rainfall.toFixed(3) ? rainfall.toFixed(3) : 0);
+      return results;
+    }
+
+    function travelGuide(results){
+        document.getElementById('travel-guide').textContent = "Travel Guide: ";
+        let umbrellaReport = needUmbrella(results);
+        document.getElementById('umbrella').textContent = umbrellaReport;
+        let clothesReport = hotOrCold(results);
+        document.getElementById('clothes').textContent = clothesReport;
+    }
+</script>
+</html>
